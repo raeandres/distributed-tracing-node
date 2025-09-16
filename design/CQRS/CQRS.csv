@@ -1,0 +1,8 @@
+﻿Component,Responsibility
+SERVICE_A,Public Command API — accepts writes
+SERVICE_B,"Command Handler — validates, creates events"
+KAFKA,"Event Bus — durable, ordered event stream"
+WriteModel_Consumer,Persists raw events or updates source DB
+ReadModel_Projector,Listens to events → updates denormalized Read DB
+Read_DB,"Optimized for fast reads (e.g., PostgreSQL, Elastic, Redis)"
+Read_API,"Separate API for queries (not shown in original, but implied)"

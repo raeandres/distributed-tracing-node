@@ -1,0 +1,88 @@
+graph TB
+    classDef command fill:#d4f7d4,stroke:#2e8b57;
+    classDef query fill:#f0f0ff,stroke:#4169e1;
+    classDef event fill:#fff2cc,stroke:#ffb300;
+    classDef eventStore fill:#f3e6ff,stroke:#9370db,stroke-width:2px;
+    classDef readModel fill:#e6f3ff,stroke:#1e90ff;
+    classDef dlq fill:#ffe6e6,stroke:#d9534f;
+    classDef saga fill:#fff0f5,stroke:#c71585,stroke-width:2px;
+    classDef outbox fill:#e6ffe6,stroke:#2e8b57,stroke-dasharray: 5 5;
+
+    subgraph Client_Layer["Client Layer"]
+        Client[("🌐 Client")]
+    end
+
+    subgraph Command_Side["Command Side (Write Path)"]
+        SERVICE_A["📮 SERVICE_A\n(Command API)"]
+        SERVICE_B["⚙️ SERVICE_B\n(Command Handler)"]
+        Saga_Coordinator["🪄 Saga Coordinator"]
+        Outbox_Poller["📬 Outbox Poller\n→ Reads outbox_events → Publishes to Kafka"]
+        KAFKA["📜 Kafka = Event Store\n+ Saga Events"]
+    end
+
+    subgraph Event_Processing["Event Processing"]
+        WriteModel_Rebuilder["🧩 State Rebuilder"]
+        ReadModel_Projector["📊 ReadModel_Projector"]
+    end
+
+    subgraph Data_Layer["Data Layer"]
+        Write_DB[(🗃️ Main Database\norders + outbox_events)]
+        EventStore[(Kafka Partitions)]
+        Read_DB["🔍 Read DB"]
+    end
+
+    subgraph DLQ_Group["Dead Letter Queues (DLQ)"]
+        Write_DLQ["📭 WriteModel_DLQ"]
+        Read_DLQ["📉 ReadModel_DLQ"]
+        Saga_DLQ["💔 Saga_DLQ"]
+        Outbox_DLQ["📦 Outbox_DLQ\n(Kafka publish failures)"]
+    end
+
+    subgraph Query_Side["Query Side (Read Path)"]
+        Read_API["📡 Read_API"]
+    end
+
+    %% --- Client initiates ---
+    Client -->|1. POST /orders| SERVICE_A
+
+    %% --- Command Handler uses Outbox ---
+    SERVICE_A -->|2. Handle Command| SERVICE_B
+    SERVICE_B -->|3. TX: Write DB + Outbox| Write_DB
+
+    %% --- Outbox Poller publishes ---
+    Write_DB -->|4. Poll outbox_events| Outbox_Poller
+    Outbox_Poller -->|5a. Success → Publish| KAFKA
+    Outbox_Poller -->|5b. Failure → DLQ| Outbox_DLQ
+
+    %% --- Saga listens to Kafka ---
+    KAFKA -->|6. Consume Events| Saga_Coordinator
+    Saga_Coordinator -->|7a. Command: ReserveItem| SERVICE_B
+    Saga_Coordinator -->|7b. Command: DebitWallet| PaymentService["💳 PaymentService"]
+    Saga_Coordinator -->|7c. Command: SendEmail| NotificationService["✉️ NotificationService"]
+
+    %% --- Services use Outbox too ---
+    PaymentService -->|8. TX: Write DB + Outbox| Write_DB
+    NotificationService -->|9. TX: Write DB + Outbox| Write_DB
+
+    %% --- Projectors and Query as before ---
+    KAFKA -->|10. Stream Events| ReadModel_Projector
+    ReadModel_Projector -->|Success → Upsert| Read_DB
+    ReadModel_Projector -->|Failure → DLQ| Read_DLQ
+
+    Client -->|11. GET /orders/:id| Read_API
+    Read_API -->|12. Query| Read_DB
+    Read_DB -->|13. Return Data| Read_API
+    Read_API -->|14. 200 OK| Client
+
+    %% --- Immediate Response ---
+    SERVICE_A -->|2. 202 Accepted - Processing| Client
+
+    %% --- Apply Styles ---
+    class SERVICE_A,SERVICE_B,PaymentService,NotificationService command
+    class Read_API query
+    class KAFKA,ReadModel_Projector event
+    class EventStore eventStore
+    class Read_DB readModel
+    class Write_DLQ,Read_DLQ,Saga_DLQ,Outbox_DLQ dlq
+    class Saga_Coordinator saga
+    class Outbox_Poller outbox

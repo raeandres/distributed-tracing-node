@@ -1,0 +1,82 @@
+graph TB
+    classDef command fill:#d4f7d4,stroke:#2e8b57;
+    classDef query fill:#f0f0ff,stroke:#4169e1;
+    classDef event fill:#fff2cc,stroke:#ffb300;
+    classDef eventStore fill:#f3e6ff,stroke:#9370db,stroke-width:2px;
+    classDef readModel fill:#e6f3ff,stroke:#1e90ff;
+    classDef dlq fill:#ffe6e6,stroke:#d9534f;
+    classDef saga fill:#fff0f5,stroke:#c71585,stroke-width:2px;
+
+    subgraph Client_Layer["Client Layer"]
+        Client[("🌐 Client")]
+    end
+
+    subgraph Command_Side["Command Side (Write Path)"]
+        SERVICE_A["📮 SERVICE_A\n(Command API)"]
+        SERVICE_B["⚙️ SERVICE_B\n(Command Handler)"]
+        Saga_Coordinator["🪄 Saga Coordinator\n(State Machine)"]
+        KAFKA["📜 Kafka = Event Store\n+ Saga Events"]
+    end
+
+    subgraph Event_Processing["Event Processing"]
+        WriteModel_Rebuilder["🧩 State Rebuilder"]
+        ReadModel_Projector["📊 ReadModel_Projector"]
+    end
+
+    subgraph Data_Layer["Data Layer"]
+        EventStore[(Kafka Partitions\nImmutable Event Log)]
+        Read_DB["🔍 Read DB"]
+    end
+
+    subgraph DLQ_Group["Dead Letter Queues (DLQ)"]
+        Write_DLQ["📭 WriteModel_DLQ"]
+        Read_DLQ["📉 ReadModel_DLQ"]
+        Saga_DLQ["💔 Saga_DLQ"]
+    end
+
+    subgraph Query_Side["Query Side (Read Path)"]
+        Read_API["📡 Read_API\n(Query API)"]
+    end
+
+    %% --- Client initiates business transaction ---
+    Client -->|1. POST /orders| SERVICE_A
+
+    %% --- Command Handler starts saga ---
+    SERVICE_A -->|2. Start OrderSaga| Saga_Coordinator
+    Saga_Coordinator -->|3a. Command: ReserveItem| SERVICE_B
+    Saga_Coordinator -->|3b. Command: DebitWallet| PaymentService["💳 PaymentService"]
+    Saga_Coordinator -->|3c. Command: SendEmail| NotificationService["✉️ NotificationService"]
+
+    %% --- Services emit events on success/failure ---
+    SERVICE_B -->|4a. ItemReserved or Failed| KAFKA
+    PaymentService -->|4b. PaymentDebited or Failed| KAFKA
+    NotificationService -->|4c. EmailSent or Failed| KAFKA
+
+    %% --- Saga listens and reacts ---
+    KAFKA -->|5. Consume Events| Saga_Coordinator
+    Saga_Coordinator -->|6a. Next Step or Compensation| KAFKA
+    Saga_Coordinator -->|6b. Emit Compensation| KAFKA
+    Saga_Coordinator -->|6c. On Failure → DLQ| Saga_DLQ
+
+    %% --- Projectors still work as before ---
+    KAFKA -->|7. Stream Events| ReadModel_Projector
+    ReadModel_Projector -->|Success → Upsert| Read_DB
+    ReadModel_Projector -->|Failure → DLQ| Read_DLQ
+
+    %% --- Query Flow ---
+    Client -->|8. GET /orders/:id| Read_API
+    Read_API -->|9. Query| Read_DB
+    Read_DB -->|10. Return Data| Read_API
+    Read_API -->|11. 200 OK| Client
+
+    %% --- Immediate Response ---
+    SERVICE_A -->|2. 202 Accepted - Saga Started| Client
+
+    %% --- Apply Styles ---
+    class SERVICE_A,SERVICE_B,PaymentService,NotificationService command
+    class Read_API query
+    class KAFKA,ReadModel_Projector event
+    class EventStore eventStore
+    class Read_DB readModel
+    class Write_DLQ,Read_DLQ,Saga_DLQ dlq
+    class Saga_Coordinator saga
