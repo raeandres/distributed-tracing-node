@@ -1,0 +1,32 @@
+sequenceDiagram
+    participant Client
+    participant SERVICE_A
+    participant SERVICE_B
+    participant KAFKA
+    participant DB_Consumer
+    participant Notification_Service
+
+    Client->>SERVICE_A: POST /request (payload)
+    activate SERVICE_A
+
+    SERVICE_A->>SERVICE_B: POST /process (computed data)
+    activate SERVICE_B
+
+    SERVICE_B->>KAFKA: Produce event (DataToPersist)
+    deactivate SERVICE_B
+
+    SERVICE_A-->>Client: 202 Accepted {requestId: "123"}
+    deactivate SERVICE_A
+
+    KAFKA->>DB_Consumer: Consume event
+    activate DB_Consumer
+
+    DB_Consumer->>DB_Consumer: Insert into DB
+    DB_Consumer->>KAFKA: Produce event (DataPersisted)
+    deactivate DB_Consumer
+
+    KAFKA->>Notification_Service: Consume DataPersisted
+    activate Notification_Service
+
+    Notification_Service->>Client: POST /webhook or WebSocket (status: success)
+    deactivate Notification_Service

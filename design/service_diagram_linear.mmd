@@ -1,0 +1,30 @@
+sequenceDiagram
+    participant Client
+    participant SERVICE_A
+    participant SERVICE_B
+    participant KAFKA
+    participant DB
+
+    Client->>SERVICE_A: POST /request (payload)
+    activate SERVICE_A
+
+    SERVICE_A->>SERVICE_B: POST /process (computed data)
+    activate SERVICE_B
+
+    SERVICE_B->>KAFKA: Produce message (stream data)
+    activate KAFKA
+
+    KAFKA->>DB: Consume & Insert data
+    activate DB
+
+    DB-->>KAFKA: Insert Ack
+    deactivate DB
+
+    KAFKA-->>SERVICE_B: Stream Ack / Confirmation
+    deactivate KAFKA
+
+    SERVICE_B-->>SERVICE_A: Response (success/failure)
+    deactivate SERVICE_B
+
+    SERVICE_A-->>Client: Final Response (200/500 etc.)
+    deactivate SERVICE_A
