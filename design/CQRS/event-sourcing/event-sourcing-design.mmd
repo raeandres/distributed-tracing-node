@@ -1,0 +1,67 @@
+graph TB
+    classDef command fill:#d4f7d4,stroke:#2e8b57;
+    classDef query fill:#f0f0ff,stroke:#4169e1;
+    classDef event fill:#fff2cc,stroke:#ffb300;
+    classDef eventStore fill:#f3e6ff,stroke:#9370db,stroke-width:2px;
+    classDef readModel fill:#e6f3ff,stroke:#1e90ff;
+    classDef dlq fill:#ffe6e6,stroke:#d9534f;
+
+    subgraph "Client Layer"
+        Client[("🌐 Client\n(Web/Mobile/App)")]
+    end
+
+    subgraph "Command Side (Write Path)"
+        SERVICE_A["📮 SERVICE_A\n(Command API)"]
+        SERVICE_B["⚙️ SERVICE_B\n(Command Handler)"]
+        KAFKA["📜 Kafka = Event Store\n(DataCreated, DataUpdated...)"]
+    end
+
+    subgraph "Event Processing"
+        WriteModel_Rebuilder["🧩 State Rebuilder\n(optional: rebuilds aggregates)"]
+        ReadModel_Projector["📊 ReadModel_Projector\n→ Projects to Read DB"]
+    end
+
+    subgraph "Data Layer"
+        EventStore[(Kafka Partitions\nImmutable Event Log)]
+        Read_DB["🔍 Read DB\n(Materialized Views)"]
+    end
+
+    subgraph "Dead Letter Queues (DLQ)"
+        Write_DLQ["📭 WriteModel_DLQ"]
+        Read_DLQ["📉 ReadModel_DLQ"]
+    end
+
+    subgraph "Query Side (Read Path)"
+        Read_API["📡 Read_API\n(Query API)"]
+    end
+
+    %% --- Command Flow ---
+    Client -->|1. POST /commands| SERVICE_A
+    SERVICE_A -->|2. Handle Command| SERVICE_B
+    SERVICE_B -->|3. Append Event| KAFKA
+
+    %% --- Event Sourcing Flow ---
+    KAFKA --> EventStore
+    EventStore -->|Replay Events| WriteModel_Rebuilder
+    EventStore -->|Stream Events| ReadModel_Projector
+
+    %% --- Projection Flow ---
+    ReadModel_Projector -->|Success → Upsert| Read_DB
+    ReadModel_Projector -->|Failure → DLQ| Read_DLQ
+
+    %% --- Query Flow ---
+    Client -->|4. GET /data/:id| Read_API
+    Read_API -->|5. Query| Read_DB
+    Read_DB -->|6. Return Data| Read_API
+    Read_API -->|7. 200 OK| Client
+
+    %% --- Immediate Response ---
+    SERVICE_A -->|3. 202 Accepted| Client
+
+    %% --- Apply Styles ---
+    class SERVICE_A,SERVICE_B command
+    class Read_API query
+    class KAFKA,ReadModel_Projector event
+    class EventStore eventStore
+    class Read_DB readModel
+    class Write_DLQ,Read_DLQ dlq

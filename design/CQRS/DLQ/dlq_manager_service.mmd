@@ -1,0 +1,5 @@
+graph TB
+    Write_DLQ --> DLQ_Manager
+    Read_DLQ --> DLQ_Manager
+    DLQ_Manager -->|Replay| KAFKA
+    DLQ_Manager -->|Alert| Monitoring[(Alerting System)]

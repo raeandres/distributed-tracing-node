@@ -21,6 +21,11 @@
 0. Make an architectural diagram for all the components to have a solid design and to map the integration of all the required modules and visualize any possible challenges and opportunities. 
     a. sequence diagram for SERVICE_A > SERVICE_B > Kafka > DB
     b. design for CQRS
+        *Considerations*
+        * Add Event Sourcing: Store all state changes as events in an event store (instead of just using Kafka as transport).
+        * Add Saga Pattern: For distributed transactions across services.
+        *Add Outbox Pattern: To ensure consistency between DB writes and Kafka publishes.
+        *Add Correlation/Idempotency Keys: For deduplication and tracing.
     c. design plan for load balancing
     d. design plan for containerized components
     e. design plan for Idempotency

@@ -1,0 +1,67 @@
+graph TB
+    classDef command fill:#d4f7d4,stroke:#2e8b57;
+    classDef query fill:#f0f0ff,stroke:#4169e1;
+    classDef event fill:#fff2cc,stroke:#ffb300;
+    classDef writeModel fill:#f9f,stroke:#9370db;
+    classDef readModel fill:#e6f3ff,stroke:#1e90ff;
+    classDef dlq fill:#ffe6e6,stroke:#d9534f;
+
+    subgraph "Client Layer"
+        Client[("🌐 Client\n(Web/Mobile/App)")]
+    end
+
+    subgraph "Command Side (Write Path)"
+        SERVICE_A["📮 SERVICE_A\n(Command API)"]
+        SERVICE_B["⚙️ SERVICE_B\n(Command Handler)"]
+        KAFKA["📬 Kafka\nMain Events: DataCreated, DataUpdated"]
+    end
+
+    subgraph "Event Processing"
+        WriteModel_Consumer["💾 WriteModel_Consumer\n→ Persist to Source DB"]
+        ReadModel_Projector["📊 ReadModel_Projector\n→ Project to Read DB"]
+    end
+
+    subgraph "Data Layer"
+        Write_DB["🗃️ Write DB\n(e.g., PostgreSQL)"]
+        Read_DB["🔍 Read DB\n(e.g., Elasticsearch)"]
+    end
+
+    subgraph "Dead Letter Queues (DLQ)"
+        Write_DLQ["📭 WriteModel_DLQ\n(failed write events)"]
+        Read_DLQ["📉 ReadModel_DLQ\n(failed projection events)"]
+    end
+
+    subgraph "Query Side (Read Path)"
+        Read_API["📡 Read_API\n(Query API)"]
+    end
+
+    %% --- Command Flow ---
+    Client -->|1. POST /commands| SERVICE_A
+    SERVICE_A -->|2. Handle Command| SERVICE_B
+    SERVICE_B -->|3. Publish Event| KAFKA
+
+    %% --- Async Event Flow ---
+    KAFKA -->|4a. Consume & Persist| WriteModel_Consumer
+    WriteModel_Consumer -->|5a. Success → Write| Write_DB
+    WriteModel_Consumer -->|5a. Failure → DLQ| Write_DLQ
+
+    KAFKA -->|4b. Consume & Project| ReadModel_Projector
+    ReadModel_Projector -->|5b. Success → Upsert| Read_DB
+    ReadModel_Projector -->|5b. Failure → DLQ| Read_DLQ
+
+    %% --- Query Flow ---
+    Client -->|6. GET /data/:id| Read_API
+    Read_API -->|7. Query| Read_DB
+    Read_DB -->|8. Return Data| Read_API
+    Read_API -->|9. 200 OK| Client
+
+    %% --- Immediate Response ---
+    SERVICE_A -->|3. 202 Accepted| Client
+
+    %% --- Apply Styles ---
+    class SERVICE_A,SERVICE_B command
+    class Read_API query
+    class KAFKA,WriteModel_Consumer,ReadModel_Projector event
+    class Write_DB writeModel
+    class Read_DB readModel
+    class Write_DLQ,Read_DLQ dlq
