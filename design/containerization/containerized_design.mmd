@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant Client as Client<br/>(Web / Mobile)
+    participant LB as Load Balancer
+    participant MS as Microservice<br/>(Container)
+    participant Outbox as Outbox Table<br/>(in MS DB)
+    participant Kafka as Kafka Broker<br/>(Event Stream)
+    participant DB as Database<br/>(Final State)
+
+    Client->>LB: HTTP Request
+    LB->>MS: Route Request
+    MS->>Outbox: Write Event to Outbox Table<br/>(Transactional)
+    Note right of MS: Ensures atomic write<br/>to DB + Outbox
+    MS-->>Client: HTTP 202 Accepted<br/>(Async Processing)
+    
+    loop Outbox Poller / CDC
+        MS->>Kafka: Publish Event from Outbox<br/>(via Poller or Debezium CDC)
+        Kafka->>Kafka: Persist Event
+    end
+
+    Kafka->>DB: Consumer Service Applies Event<br/>(Idempotent Update)
+    Note right of DB: Eventually Consistent<br/>Final State Updated
+
+    Note over Client,DB: All services containerized,<br/>orchestrated via Kubernetes or Docker Compose
