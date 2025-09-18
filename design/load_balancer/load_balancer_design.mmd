@@ -1,0 +1,52 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#f9f9f9', 'edgeLabelBackground':'#ffffff'}}}%%
+flowchart TD
+    subgraph Client["🌐 Client (Browser/App)"]
+        C1[User Request
+        GET /user/123
+        HTTPS]
+    end
+
+    subgraph Edge["🌍 Edge Layer"]
+        NGINX[NGINX Load Balancer
+        - SSL Termination
+        - Round Robin LB
+        - Health Checks
+        - Rate Limiting
+        - Access Logs]
+    end
+
+    subgraph Services["🧩 Microservice Layer (UserService)"]
+        U1[User Service
+        Instance 1
+        http://10.0.1.10:8080]
+        U2[User Service
+        Instance 2
+        http://10.0.1.11:8080]
+        U3[User Service
+        Instance 3
+        http://10.0.1.12:8080]
+    end
+
+    subgraph Data["🗄️ Data Layer"]
+        DB[(PostgreSQL
+HA Cluster
+Primary + Read Replicas)]
+    end
+
+    %% Connections
+    C1 -->|HTTPS 443| NGINX
+    NGINX -->|HTTP 8080| U1
+    NGINX -->|HTTP 8080| U2
+    NGINX -->|HTTP 8080| U3
+
+    U1 -->|Read/Write| DB
+    U2 -->|Read/Write| DB
+    U3 -->|Read/Write| DB
+
+    %% Styling
+    style C1 fill:#e6f7ff,stroke:#1890ff,stroke-width:2px
+    style NGINX fill:#fff2e8,stroke:#fa8c16,stroke-width:2px,color:#333
+    style U1 fill:#d4f0d4,stroke:#52c41a,stroke-width:2px
+    style U2 fill:#d4f0d4,stroke:#52c41a,stroke-width:2px
+    style U3 fill:#d4f0d4,stroke:#52c41a,stroke-width:2px
+    style DB fill:#f9f0ff,stroke:#722ed1,stroke-width:2px
